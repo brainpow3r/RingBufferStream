@@ -1,17 +1,25 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace RIngBufferStream.Entity
 {
-    public class RingBuffer<T> : IEnumerable<T>
+    public class RingBuffer
     {
         #region PRIVATE FIELDS
-        private readonly T[] _buffer;
+        private readonly int[] _buffer;
         private int _head;
         private int _tail;
         private int _size;
+        private string _filePathRead = Path.Combine(Directory.GetCurrentDirectory(), "TestFile.txt");
+        private string _filePathWrite = Path.Combine(Directory.GetCurrentDirectory(), "TestFileWrite.txt");
+        private object _writerLock = new object();
+        private object _readerLock = new object();
+        private bool _finishedReading = false;
+
         private int InternalIndex(int index) => _head + (index < (Capacity - _head) ? index : index - Capacity); 
 
         private void ThrowIfEmpty(string message = "Unable to access an empty buffer.")
@@ -34,6 +42,8 @@ namespace RIngBufferStream.Entity
             index--;
         }
 
+
+
         #endregion
 
         public RingBuffer(int capacity)
@@ -41,7 +51,7 @@ namespace RIngBufferStream.Entity
             if (capacity < 1)
                 throw new ArgumentException("RingBuffer cannot have negative or zero capacity.", nameof(capacity)); 
             
-            _buffer = new T[capacity]; 
+            _buffer = new int[capacity]; 
             _size = 0;
 
             _head = 0;
@@ -54,19 +64,19 @@ namespace RIngBufferStream.Entity
         public bool IsFull { get => Size == Capacity; }
         public bool IsEmpty { get => Size == 0; }
 
-        public T Front()
+        public int Front()
         {
             ThrowIfEmpty();
             return _buffer[_head];
         }
 
-        public T Back()
+        public int Back()
         {
             ThrowIfEmpty();
             return _buffer[(_tail != 0 ? _tail : Capacity) - 1];
         }
 
-        public T this[int index]
+        public int this[int index]
         {
             get
             {
@@ -91,7 +101,7 @@ namespace RIngBufferStream.Entity
             }
         }
 
-        public void PushBack(T item)
+        public void PushBack(int item)
         {
             if (IsFull)
             {
@@ -106,8 +116,8 @@ namespace RIngBufferStream.Entity
             }
         }
 
-        public void PushFront(T item)
-        {
+        public void PushFront(int item)
+        { 
             if (IsFull)
             {
                 Decrement(ref _head);
@@ -120,32 +130,96 @@ namespace RIngBufferStream.Entity
                 _buffer[_head] = item;
                 ++_size;
             }
+            
         }
 
-        public void PopBack()
+        public int PopBack()
         {
             ThrowIfEmpty("Cannot Pop elements from an empty buffer.");
+            int value = _buffer[_tail];
+            _buffer[_tail] = default(int);
             Decrement(ref _tail);
-            _buffer[_tail] = default(T);
             --_size;
+            return value;
         }
 
-        public void PopFront()
+        public int PopFront()
         {
             ThrowIfEmpty("Cannot Pop elements from an empty buffer.");
-            _buffer[_head] = default(T);
+            int value = _buffer[_head];
+            _buffer[_head] = default(int);
             Increment(ref _head);
             --_size;
+            return value;
+        }
+
+        public void ReadFromFile()
+        {
+            
+            using (var fs = new FileStream(_filePathRead, FileMode.Open))
+            {
+                fs.Seek(0, SeekOrigin.Begin);
+                int pos = 0;
+
+                lock(_buffer)
+                {
+                    while (pos <= fs.Length)
+                    {
+                        if (IsFull)
+                        {
+                            Monitor.Wait(_buffer);
+                            Monitor.PulseAll(_buffer);
+                            Console.WriteLine("Wait in ReadFromFile");
+                        }
+
+                        var b = fs.ReadByte();
+                        Console.WriteLine("Reading {0} st/th byte...: Symbol: {1}", pos, Convert.ToChar(b));
+                        pos++;
+                        PushFront(b);
+
+                    }
+                    _finishedReading = true;
+                }
+            }
+        }
+
+        public void WriteToFile()
+        {
+            using (var fs = new FileStream(_filePathWrite, FileMode.Open))
+            {
+
+                fs.Seek(0, SeekOrigin.Begin);
+                int pos = 0;
+
+                lock (_buffer)
+                {
+                    while(!_finishedReading)
+                    {
+                        if (Size == 0)
+                        {
+                            Monitor.Wait(_buffer);
+                        }
+
+                        while (Size > 0)
+                        {
+                            fs.WriteByte((byte)PopBack());
+                        }
+                        Monitor.PulseAll(_buffer);
+                        Console.WriteLine("PulseAll in WriteToFile");
+
+                    }
+                }
+            }
         }
 
         public override string ToString() => string.Format("[RingBuffer]\nCapaciity: {0}\nSize: {1}\nIsFull: {2}\nIsEmpty: {3}", Capacity, Size, IsFull, IsEmpty);
         
 
         #region IEnumarable<T> implementation
-        public IEnumerator<T> GetEnumerator()
+        public IEnumerator<int> GetEnumerator()
         {
-            var segments = new ArraySegment<T>[2] { ArrayOne(), ArrayTwo() };
-            foreach (ArraySegment<T> segment in segments)
+            var segments = new ArraySegment<int>[2] { ArrayOne(), ArrayTwo() };
+            foreach (ArraySegment<int> segment in segments)
             {
                 for (int i = 0; i < segment.Count; i++)
                 {
@@ -154,42 +228,41 @@ namespace RIngBufferStream.Entity
             }
         }
 
-        IEnumerator IEnumerable.GetEnumerator() => (IEnumerator)GetEnumerator();
         #endregion
 
         #region Array items easy access.
         // The array is composed by at most two non-contiguous segments, 
         // the next two methods allow easy access to those.
 
-        private ArraySegment<T> ArrayOne()
+        private ArraySegment<int> ArrayOne()
         {
             if (IsEmpty)
             {
-                return new ArraySegment<T>(Array.Empty<T>());
+                return new ArraySegment<int>(Array.Empty<int>());
             }
             else if (_head < _tail)
             {
-                return new ArraySegment<T>(_buffer, _head, _tail - _head);
+                return new ArraySegment<int>(_buffer, _head, _tail - _head);
             }
             else
             {
-                return new ArraySegment<T>(_buffer, _head, _buffer.Length - _head);
+                return new ArraySegment<int>(_buffer, _head, _buffer.Length - _head);
             }
         }
 
-        private ArraySegment<T> ArrayTwo()
+        private ArraySegment<int> ArrayTwo()
         {
             if (IsEmpty)
             {
-                return new ArraySegment<T>(Array.Empty<T>());
+                return new ArraySegment<int>(Array.Empty<int>());
             }
             else if (_head < _tail)
             {
-                return new ArraySegment<T>(_buffer, _tail, 0);
+                return new ArraySegment<int>(_buffer, _tail, 0);
             }
             else
             {
-                return new ArraySegment<T>(_buffer, 0, _tail);
+                return new ArraySegment<int>(_buffer, 0, _tail);
             }
         }
         #endregion

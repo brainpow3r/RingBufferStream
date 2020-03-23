@@ -1,21 +1,23 @@
 ﻿using RIngBufferStream.Entity;
 using System;
+using System.IO;
+using System.Threading;
 
 namespace RIngBufferStream
 {
-    class Program
+    internal class Program
     {
         static void Main(string[] args)
         {
-            RingBuffer<int> rb = new RingBuffer<int>(5);
+            RingBuffer rb = new RingBuffer(10);
 
-            rb.PushFront(10);
-            rb.PushFront(14);
-            rb.PushFront(17);
-            rb.PushFront(134);
-            rb.PushFront(11);
-            rb.PushFront(183);
-            rb.PushFront(91);
+            Thread readerThread = new Thread(rb.ReadFromFile);
+            Thread writerThread = new Thread(rb.WriteToFile);
+
+            readerThread.Start();
+            writerThread.Start();
+            readerThread.Join();
+            writerThread.Join();
 
             var e = rb.GetEnumerator();
 
@@ -26,5 +28,6 @@ namespace RIngBufferStream
 
             Console.WriteLine(rb);
         }
+
     }
 }
