@@ -136,9 +136,9 @@ namespace RIngBufferStream.Entity
         public int PopBack()
         {
             ThrowIfEmpty("Cannot Pop elements from an empty buffer.");
+            Decrement(ref _tail);
             int value = _buffer[_tail];
             _buffer[_tail] = default(int);
-            Decrement(ref _tail);
             --_size;
             return value;
         }
@@ -146,9 +146,9 @@ namespace RIngBufferStream.Entity
         public int PopFront()
         {
             ThrowIfEmpty("Cannot Pop elements from an empty buffer.");
-            int value = _buffer[_head];
             _buffer[_head] = default(int);
             Increment(ref _head);
+            int value = _buffer[_head];
             --_size;
             return value;
         }
@@ -158,27 +158,29 @@ namespace RIngBufferStream.Entity
             
             using (var fs = new FileStream(_filePathRead, FileMode.Open))
             {
-                fs.Seek(0, SeekOrigin.Begin);
+                //var fileBytes = fs.Read
+                fs.Seek(3, SeekOrigin.Begin);
                 int pos = 0;
 
                 lock(_buffer)
                 {
-                    while (pos <= fs.Length)
+                    while (pos <= fs.Length-4)
                     {
                         if (IsFull)
                         {
-                            Monitor.Wait(_buffer);
                             Monitor.PulseAll(_buffer);
+                            Monitor.Wait(_buffer);
                             Console.WriteLine("Wait in ReadFromFile");
                         }
 
                         var b = fs.ReadByte();
-                        Console.WriteLine("Reading {0} st/th byte...: Symbol: {1}", pos, Convert.ToChar(b));
+                        Console.WriteLine("Reading {0} st/th byte...: Symbol: {1}", pos, (b >= 0) ? Convert.ToChar(b) : '/');
                         pos++;
                         PushFront(b);
 
                     }
                     _finishedReading = true;
+                    Monitor.PulseAll(_buffer);
                 }
             }
         }
@@ -202,12 +204,16 @@ namespace RIngBufferStream.Entity
 
                         while (Size > 0)
                         {
-                            fs.WriteByte((byte)PopBack());
+                            byte byteToWrite = (byte)PopBack();
+                            Console.WriteLine("Writing symbol to file: {0}", Convert.ToChar(byteToWrite));
+                            fs.WriteByte(byteToWrite);
                         }
                         Monitor.PulseAll(_buffer);
                         Console.WriteLine("PulseAll in WriteToFile");
 
                     }
+
+                    Console.WriteLine("FinishedWriting!");
                 }
             }
         }

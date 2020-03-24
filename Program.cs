@@ -9,7 +9,7 @@ namespace RIngBufferStream
     {
         static void Main(string[] args)
         {
-            RingBuffer rb = new RingBuffer(10);
+            RingBuffer rb = new RingBuffer(1000);
 
             Thread readerThread = new Thread(rb.ReadFromFile);
             Thread writerThread = new Thread(rb.WriteToFile);
