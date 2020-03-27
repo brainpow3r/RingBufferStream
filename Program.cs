@@ -5,28 +5,57 @@ using System.Threading;
 
 namespace RIngBufferStream
 {
-    internal class Program
+    public class Program
     {
+        public static string _filePathRead = Path.Combine(Directory.GetCurrentDirectory(), "TestFile.txt");
+        public static string _filePathWrite = Path.Combine(Directory.GetCurrentDirectory(), "TestFileWrite.txt");
+        public static RingBuffer rb = new RingBuffer(1000);
+        public static bool _finishedReading = false;
+
         static void Main(string[] args)
         {
-            RingBuffer rb = new RingBuffer(1000);
 
-            Thread readerThread = new Thread(rb.ReadFromFile);
-            Thread writerThread = new Thread(rb.WriteToFile);
+            Thread readerThread = new Thread(ReadFromFile);
+            Thread writerThread = new Thread(WriteToFile);
 
             readerThread.Start();
             writerThread.Start();
             readerThread.Join();
             writerThread.Join();
 
-            var e = rb.GetEnumerator();
+            Console.WriteLine("RingBuffer state...");
+            Console.WriteLine(rb);
+        }
 
-            while(e.MoveNext())
+        public static void ReadFromFile() {
+            using (var fs = new FileStream(_filePathRead, FileMode.Open))
             {
-                Console.WriteLine("Value: {0}", e.Current);
+                fs.Seek(3, SeekOrigin.Begin);
+                int pos = 0;
+
+                while (pos <= fs.Length-4)
+                {
+                    pos++;
+                    rb.PushFront(fs.ReadByte());
+                }
+                _finishedReading = true;
+            }
+        }
+
+        public static void WriteToFile()
+        {
+            using (var fs = new FileStream(_filePathWrite, FileMode.Open))
+            {
+                fs.Seek(0, SeekOrigin.Begin);
+                while (true) {
+                    if (rb.IsEmpty && _finishedReading)
+                        break;
+                    fs.WriteByte((byte)rb.PopBack());
+                }
+
+                Console.WriteLine("FinishedWriting!");
             }
 
-            Console.WriteLine(rb);
         }
 
     }
