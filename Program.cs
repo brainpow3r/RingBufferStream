@@ -14,10 +14,9 @@ namespace RIngBufferStream
 
         static void Main(string[] args)
         {
-
             Thread readerThread = new Thread(ReadFromFile);
             Thread writerThread = new Thread(WriteToFile);
-
+    
             readerThread.Start();
             writerThread.Start();
             readerThread.Join();
@@ -28,6 +27,8 @@ namespace RIngBufferStream
         }
 
         public static void ReadFromFile() {
+
+            Console.WriteLine("Starting reading from file...");
             using (var fs = new FileStream(_filePathRead, FileMode.Open))
             {
                 fs.Seek(3, SeekOrigin.Begin);
@@ -36,7 +37,7 @@ namespace RIngBufferStream
                 while (pos <= fs.Length-4)
                 {
                     pos++;
-                    rb.PushFront(fs.ReadByte());
+                    rb.Insert(fs.ReadByte());
                 }
                 _finishedReading = true;
             }
@@ -44,13 +45,15 @@ namespace RIngBufferStream
 
         public static void WriteToFile()
         {
+            Console.WriteLine("Starting writing to file...");
             using (var fs = new FileStream(_filePathWrite, FileMode.Open))
             {
                 fs.Seek(0, SeekOrigin.Begin);
                 while (true) {
                     if (rb.IsEmpty && _finishedReading)
                         break;
-                    fs.WriteByte((byte)rb.PopBack());
+
+                    fs.WriteByte((byte)rb.Take(_finishedReading));
                 }
 
                 Console.WriteLine("FinishedWriting!");

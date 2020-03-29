@@ -15,35 +15,15 @@ namespace RIngBufferStream.Entity
         private int _tail;
         private int _size;
         private object _lock = new Object();
-        private bool _finishedReading = false;
-
-        private int InternalIndex(int index) => _head + (index < (Capacity - _head) ? index : index - Capacity); 
-
-        private void ThrowIfEmpty(string message = "Unable to access an empty buffer.")
-        {
-            if (IsEmpty)
-                throw new InvalidOperationException(message);
-        }
-
-        private void Increment(ref int index)
-        {
-            lock(_lock) {
-                if (++index == Capacity)
-                    index = 0;
-            }
-        }
+        private bool _finalize = false;
 
         private void Decrement(ref int index)
         {
-            lock(_lock) {
                 if (index == 0)
                     index = Capacity;
 
                 index--;
-            }
         }
-
-
 
         #endregion
 
@@ -61,65 +41,38 @@ namespace RIngBufferStream.Entity
         }
 
         public int Capacity { get => _buffer.Length; }
-        public int Size { get { lock (_lock) { return _size; } } }
-        public bool IsFull { get { lock (_lock) { return Size == Capacity; } } }
-        public bool IsEmpty { get { lock (_lock) { return Size == 0; } } }
+        public int Size { get => _size; }
+        public bool IsFull { get => Size == Capacity; }
+        public bool IsEmpty { get => Size == 0; }
 
-        public void PushBack(int item)
-        {
-            lock (_lock)
-            { 
-                if (IsFull)
-                {
-                    Console.WriteLine("Locking PushBack...");
-                    _buffer[_tail] = item;
-                    Increment(ref _tail);
-                    _head = _tail;
-                    Monitor.Wait(_lock);
-                
-                } else
-                {
-                    _buffer[_tail] = item;
-                    Increment(ref _tail);
-                    ++_size;
-                    Monitor.PulseAll(_lock);
-                }
-            }
-        }
-
-        public void PushFront(int item)
+        public void Insert(int item)
         { 
             lock (_lock)
             {
-                if (IsFull)
+                while (IsFull)
                 {
-                    //Console.WriteLine("Locking PushFront...");
                     Monitor.PulseAll(_lock);
-                    Decrement(ref _head);
-                    _tail = _head;
-                    _buffer[_head] = item;
                     Monitor.Wait(_lock);
                 }
-                else
-                {
-                    Decrement(ref _head);
-                    _buffer[_head] = item;
-                    ++_size;
-                    Monitor.PulseAll(_lock);
-                }
+
+                Decrement(ref _head);
+                _buffer[_head] = item;
+                ++_size;
+                Monitor.PulseAll(_lock);
+
             }
             
         }
 
-        public int PopBack()
+        public int Take(bool finished)
         {
             lock(_lock) {
 
                 if (IsEmpty)
                 {
-                    //Console.WriteLine("Waiting in PopBack...");
                     Monitor.PulseAll(_lock);
                     Monitor.Wait(_lock);
+                    Console.WriteLine("Waiting");
                 }
 
                 Decrement(ref _tail);
@@ -130,26 +83,6 @@ namespace RIngBufferStream.Entity
                 Monitor.PulseAll(_lock);
                 return value;
 
-            }
-        }
-
-        public int PopFront()
-        {
-            lock(_lock) {
-                if (IsEmpty)
-                {
-                    Console.WriteLine("Waiting in PopFront...");
-                    Monitor.Wait(_lock);
-                } 
-
-                _buffer[_head] = default(int);
-                Increment(ref _head);
-                int value = _buffer[_head];
-                --_size;
-
-                Monitor.PulseAll(_lock);
-                return value;
-               
             }
         }
 
